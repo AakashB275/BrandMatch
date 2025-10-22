@@ -1,6 +1,8 @@
+import 'package:brand_model_matching/features/auth/login_screen.dart';
+import 'package:brand_model_matching/features/auth/register_screen.dart';
 import 'package:go_router/go_router.dart';
 import 'features/splash/splash_screen.dart';
-import 'features/auth/login_screen.dart';
+import 'features/auth/register_screen.dart';
 import 'features/auth/role_selection_screen.dart';
 import 'features/profile/model_profile_setup_screen.dart';
 import 'features/profile/brand_profile_setup_screen.dart';
@@ -18,7 +20,8 @@ GoRouter createRouter() {
     initialLocation: '/',
     routes: [
       GoRoute(path: '/', builder: (_, __) => const SplashScreen()),
-      GoRoute(path: '/login', builder: (_, __) => const RegisterScreen()),
+      GoRoute(path: '/login', builder: (_, __) => const LoginScreen()),
+      GoRoute(path: '/register', builder: (_, __) => const RegisterScreen()),
       GoRoute(path: '/role', builder: (_, __) => const RoleSelectionScreen()),
       GoRoute(path: '/setup/model', builder: (_, __) => const ModelProfileSetupScreen()),
       GoRoute(path: '/setup/brand', builder: (_, __) => const BrandProfileSetupScreen()),

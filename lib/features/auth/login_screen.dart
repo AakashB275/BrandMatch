@@ -1,17 +1,17 @@
+// Save this file as: lib/features/auth/login_screen_new.dart
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-class RegisterScreen extends StatefulWidget {
-  const RegisterScreen({super.key});
+class LoginScreen extends StatefulWidget {
+  const LoginScreen({super.key});
 
   @override
-  State<RegisterScreen> createState() => _RegisterScreenState();
+  State<LoginScreen> createState() => _LoginScreenState();
 }
 
-class _RegisterScreenState extends State<RegisterScreen> {
-  final TextEditingController _phoneController = TextEditingController();
+class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
@@ -19,16 +19,16 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final supabase = Supabase.instance.client;
   bool _isObscure = true;
   bool _isLoading = false;
+  bool _rememberMe = false;
 
   @override
   void dispose() {
-    _phoneController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
     super.dispose();
   }
 
-  Future<void> _register() async {
+  Future<void> _login() async {
     // Validate form first
     if (!_formKey.currentState!.validate()) {
       return;
@@ -38,64 +38,61 @@ class _RegisterScreenState extends State<RegisterScreen> {
       _isLoading = true;
     });
 
-    String phoneText = _phoneController.text.trim();
     String email = _emailController.text.trim();
     String password = _passwordController.text.trim();
 
     try {
-      // Step 1: Create authentication account
-      final AuthResponse response = await supabase.auth.signUp(
+      final AuthResponse response = await supabase.auth.signInWithPassword(
         email: email,
         password: password,
-        data: {'phone': phoneText},
-        emailRedirectTo: kIsWeb 
-            ? 'https://your-app-url.com/auth/callback' 
-            : null,
       );
 
-      if (response.user != null) {
-        // Step 2: Insert user data into your table
-        await _insertUserData(
-          authUserId: response.user!.id,
-          phone: phoneText,
-          email: email,
-        );
+      if (response.session != null && mounted) {
+        // Check if user has completed profile setup
+        final userProfile = await supabase
+            .from('users')
+            .select('role')
+            .eq('auth_user_id', response.user!.id)
+            .maybeSingle();
 
-        if (mounted) {
-          await _showMessageDialog(
-            "Registration successful! Please check your email for verification.",
-            isSuccess: true,
-          );
-        }
-      } else {
-        if (mounted) {
-          await _showMessageDialog(
-            "Registration failed. Please try again.",
-            isSuccess: false,
-          );
+        if (userProfile != null && userProfile['role'] != null) {
+          // User has already set up their profile, go to home
+          if (mounted) {
+            context.go('/home');
+          }
+        } else {
+          // User needs to complete profile setup
+          if (mounted) {
+            context.go('/role');
+          }
         }
       }
     } on AuthException catch (e) {
       if (mounted) {
-        String errorMessage = "Registration failed: ${e.message}";
-        
+        String errorMessage = "Login failed: ${e.message}";
+
         // Handle specific error cases
-        if (e.message.contains('already registered')) {
-          errorMessage = "This email is already registered. Please login instead.";
-        } else if (e.message.contains('weak password')) {
-          errorMessage = "Password is too weak. Please use a stronger password.";
+        if (e.message.contains('Invalid login credentials')) {
+          errorMessage = "Invalid email or password. Please try again.";
+        } else if (e.message.contains('Email not confirmed')) {
+          errorMessage =
+              "Please verify your email before logging in. Check your inbox for the verification link.";
+        } else if (e.message.contains('User not found')) {
+          errorMessage =
+              "No account found with this email. Please register first.";
         }
-        
+
         await _showMessageDialog(errorMessage, isSuccess: false);
       }
     } catch (e) {
       if (mounted) {
         String errorMessage = "An unexpected error occurred: ${e.toString()}";
-        
+
         if (kIsWeb) {
-          errorMessage = "Network error on web. Please check CORS settings and try again.";
+          errorMessage =
+              "Network error on web. Please check CORS settings and try again.";
         }
-        
+
         await _showMessageDialog(errorMessage, isSuccess: false);
       }
     } finally {
@@ -107,28 +104,53 @@ class _RegisterScreenState extends State<RegisterScreen> {
     }
   }
 
-  Future<void> _insertUserData({
-    required String authUserId,
-    required String phone,
-    required String email,
-  }) async {
+  Future<void> _resetPassword() async {
+    if (_emailController.text.trim().isEmpty) {
+      await _showMessageDialog(
+        "Please enter your email address to reset your password.",
+        isSuccess: false,
+      );
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+    });
+
     try {
-      await supabase.from('users').insert({
-        'auth_user_id': authUserId,
-        'phone': phone,
-        'email': email,
-        'role': 'Employee',
-        'created_at': DateTime.now().toIso8601String(),
-      });
+      await supabase.auth.resetPasswordForEmail(
+        _emailController.text.trim(),
+        redirectTo: kIsWeb ? 'https://your-app-url.com/reset-password' : null,
+      );
+
+      if (mounted) {
+        await _showMessageDialog(
+          "Password reset email sent! Please check your inbox.",
+          isSuccess: true,
+        );
+      }
     } catch (e) {
-      print("Error inserting user data: $e");
-      throw Exception('Failed to create user profile');
+      if (mounted) {
+        await _showMessageDialog(
+          "Failed to send reset email: ${e.toString()}",
+          isSuccess: false,
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     }
   }
 
-  Future<void> _showMessageDialog(String message, {required bool isSuccess}) async {
+  Future<void> _showMessageDialog(
+    String message, {
+    required bool isSuccess,
+  }) async {
     if (!mounted) return;
-    
+
     await showDialog(
       context: context,
       barrierDismissible: false,
@@ -137,13 +159,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
         content: Text(message),
         actions: [
           TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              if (isSuccess && mounted) {
-                // Navigate to role selection after successful registration
-                context.go('/role');
-              }
-            },
+            onPressed: () => Navigator.pop(context),
             child: const Text("OK"),
           ),
         ],
@@ -154,14 +170,51 @@ class _RegisterScreenState extends State<RegisterScreen> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    
+
     return Scaffold(
-      appBar: AppBar(title: const Text('Welcome')),
+      appBar: AppBar(title: const Text('Welcome Back')),
       body: Form(
         key: _formKey,
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
+            // Logo/Header Section
+            Container(
+              margin: const EdgeInsets.only(bottom: 32, top: 16),
+              child: Column(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                      color: cs.primaryContainer,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      Icons.favorite,
+                      size: 48,
+                      color: cs.onPrimaryContainer,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Brandmatch',
+                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      color: cs.primary,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Connect with your perfect match',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: cs.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            // Login Form Card
             Card(
               child: Padding(
                 padding: const EdgeInsets.all(16.0),
@@ -169,14 +222,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     Text(
-                      'Sign up to create account',
-                      style: Theme.of(context)
-                          .textTheme
-                          .titleMedium
-                          ?.copyWith(fontWeight: FontWeight.w600),
+                      'Sign in to your account',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                     const SizedBox(height: 16),
-                    
+
                     // Email Field
                     TextFormField(
                       controller: _emailController,
@@ -189,15 +241,16 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       validator: (value) {
                         if (value == null || value.trim().isEmpty) {
                           return "Email is required";
-                        } else if (!RegExp(r'^[^@]+@[^@]+\.[^@]+')
-                            .hasMatch(value.trim())) {
+                        } else if (!RegExp(
+                          r'^[^@]+@[^@]+\.[^@]+',
+                        ).hasMatch(value.trim())) {
                           return "Enter a valid email";
                         }
                         return null;
                       },
                     ),
                     const SizedBox(height: 12),
-                    
+
                     // Password Field
                     TextFormField(
                       controller: _passwordController,
@@ -205,7 +258,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       decoration: InputDecoration(
                         labelText: 'Password',
                         prefixIcon: const Icon(Icons.lock_outlined),
-                        hintText: 'At least 6 characters',
+                        hintText: 'Enter your password',
                         suffixIcon: IconButton(
                           icon: Icon(
                             _isObscure
@@ -222,51 +275,53 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       validator: (value) {
                         if (value == null || value.isEmpty) {
                           return "Password is required";
-                        } else if (value.length < 6) {
-                          return "Password must be at least 6 characters";
-                        }
-                        return null;
-                      },
-                    ),
-                    const SizedBox(height: 12),
-                    
-                    // Phone Field
-                    TextFormField(
-                      controller: _phoneController,
-                      keyboardType: TextInputType.phone,
-                      decoration: const InputDecoration(
-                        labelText: 'Phone number',
-                        prefixIcon: Icon(Icons.phone_outlined),
-                        hintText: '+1 555 555 5555',
-                      ),
-                      validator: (value) {
-                        if (value == null || value.trim().isEmpty) {
-                          return "Phone number is required";
-                        }
-                        
-                        // Remove spaces, dashes, and other non-digit characters for validation
-                        String digitsOnly = value.replaceAll(RegExp(r'\D'), '');
-                        
-                        if (digitsOnly.length < 10) {
-                          return "Phone number must be at least 10 digits";
                         }
                         return null;
                       },
                     ),
                     const SizedBox(height: 8),
-                    
-                    Text(
-                      'We\'ll verify via email link and OTP to secure your account.',
-                      style: Theme.of(context)
-                          .textTheme
-                          .bodySmall
-                          ?.copyWith(color: cs.onSurfaceVariant),
+
+                    // Remember Me & Forgot Password Row
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Checkbox(
+                              value: _rememberMe,
+                              onChanged: _isLoading
+                                  ? null
+                                  : (value) {
+                                      setState(() {
+                                        _rememberMe = value ?? false;
+                                      });
+                                    },
+                            ),
+
+                            Text(
+                              'Remember me',
+                              style: TextStyle(color: cs.onSurfaceVariant),
+                            ),
+                          ],
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.only(left: 12),
+                          child: TextButton(
+                            onPressed: _isLoading ? null : _resetPassword,
+                            child: Text(
+                              'Forgot password?',
+                              style: Theme.of(context).textTheme.bodySmall
+                                  ?.copyWith(color: cs.primary),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 24),
-                    
-                    // Register Button
+                    const SizedBox(height: 16),
+
+                    // Login Button
                     FilledButton(
-                      onPressed: _isLoading ? null : _register,
+                      onPressed: _isLoading ? null : _login,
                       style: FilledButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 16),
                       ),
@@ -279,26 +334,57 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                 color: Colors.white,
                               ),
                             )
-                          : const Text(
-                              "Register",
-                              style: TextStyle(fontSize: 16),
-                            ),
+                          : const Text("Login", style: TextStyle(fontSize: 16)),
                     ),
                     const SizedBox(height: 16),
-                    
-                    // Login Link
+
+                    // Register Link
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         Text(
-                          'Already have an account? ',
+                          'Don\'t have an account? ',
                           style: TextStyle(color: cs.onSurfaceVariant),
                         ),
                         TextButton(
-                          onPressed: () => context.go('/login'),
-                          child: const Text('Login'),
+                          onPressed: _isLoading
+                              ? null
+                              : () => context.go('/register'),
+                          child: const Text('Register'),
                         ),
                       ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 24),
+
+            // Additional Info Card
+            Card(
+              color: cs.primaryContainer.withOpacity(0.3),
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  children: [
+                    Icon(Icons.info_outline, color: cs.primary, size: 32),
+                    const SizedBox(height: 12),
+                    Text(
+                      'New to Brandmatch?',
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w600,
+                        color: cs.onSurface,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Create an account to start connecting brands with models and discover amazing collaboration opportunities.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: cs.onSurfaceVariant,
+                        fontSize: 14,
+                      ),
                     ),
                   ],
                 ),

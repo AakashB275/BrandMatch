@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:brand_model_matching/ui/widgets/gradient_header.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -14,10 +15,11 @@ class _SplashScreenState extends State<SplashScreen> {
   void initState() {
     super.initState();
     Future.microtask(() async {
-      // TODO: Check auth session & verification status
-      await Future.delayed(const Duration(milliseconds: 600));
+      // Check Supabase session and route accordingly
+      await Future.delayed(const Duration(milliseconds: 400));
+      final session = Supabase.instance.client.auth.currentSession;
       if (!mounted) return;
-      if (false) {
+      if (session != null) {
         context.go('/home');
       } else {
         context.go('/login');

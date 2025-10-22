@@ -160,12 +160,12 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
             child: ListView(
               padding: const EdgeInsets.symmetric(horizontal: 12),
               scrollDirection: Axis.horizontal,
-              children: [
-                _buildFilterChip('Nearby'),
-                _buildFilterChip('Streetwear'),
-                _buildFilterChip('Editorial'),
-                _buildFilterChip('Commercial'),
-              ],
+              // children: [
+              //   _buildFilterChip('Nearby'),
+              //   _buildFilterChip('Streetwear'),
+              //   _buildFilterChip('Editorial'),
+              //   _buildFilterChip('Commercial'),
+              // ],
             ),
           ),
           

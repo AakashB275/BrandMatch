@@ -18,7 +18,7 @@ GoRouter createRouter() {
     initialLocation: '/',
     routes: [
       GoRoute(path: '/', builder: (_, __) => const SplashScreen()),
-      GoRoute(path: '/login', builder: (_, __) => const LoginScreen()),
+      GoRoute(path: '/login', builder: (_, __) => const RegisterScreen()),
       GoRoute(path: '/role', builder: (_, __) => const RoleSelectionScreen()),
       GoRoute(path: '/setup/model', builder: (_, __) => const ModelProfileSetupScreen()),
       GoRoute(path: '/setup/brand', builder: (_, __) => const BrandProfileSetupScreen()),
